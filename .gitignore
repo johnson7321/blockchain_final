@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+artifacts/
+cache/
+typechain/
+typechain-types/
+
+# Temporary files
+*.log
+.env

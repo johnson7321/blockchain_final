@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>區塊鏈醫療健康管理系統 PoC</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --card: #22263a;
+    --border: #2e3350; --accent: #4f7cff; --green: #22c55e;
+    --red: #ef4444; --amber: #f59e0b; --text: #e2e8f0;
+    --mute: #8892a4; --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+  /* ── Header ── */
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 18px; font-weight: 700; letter-spacing: .3px; }
+  header h1 span { color: var(--accent); }
+  #walletBtn { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 9px 20px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .2s; }
+  #walletBtn:hover { opacity: .85; }
+  #walletAddr { font-size: 13px; color: var(--mute); margin-left: 12px; font-family: monospace; }
+  #networkTag { font-size: 12px; padding: 3px 10px; border-radius: 20px; margin-left: 10px; background: #1e3a1e; color: var(--green); border: 1px solid #2d5a2d; }
+
+  /* ── Panel Role Bar ── */
+  .panel-role-bar { background: #12152099; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 18px; display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+  .panel-role-bar label { font-size: 13px; color: var(--mute); white-space: nowrap; }
+  .panel-role-bar select { background: var(--card); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; outline: none; width: auto; }
+  .panel-role-bar .role-hint { font-size: 12px; color: var(--mute); }
+  .role-tag { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+
+  /* ── Locked card ── */
+  .card.locked { opacity: 0.35; pointer-events: none; }
+  .card.locked::after { content: "🔒 權限不足"; display: block; text-align: center; font-size: 11px; color: var(--mute); margin-top: 8px; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 4px; padding: 24px 32px 0; }
+  .tab { padding: 10px 24px; border-radius: var(--radius) var(--radius) 0 0; cursor: pointer; font-weight: 600; font-size: 14px; border: 1px solid transparent; border-bottom: none; color: var(--mute); background: transparent; transition: all .2s; }
+  .tab.active { background: var(--surface); border-color: var(--border); color: var(--text); }
+  .tab-icon { margin-right: 8px; }
+
+  /* ── Main ── */
+  main { padding: 0 32px 40px; }
+  .panel { display: none; background: var(--surface); border: 1px solid var(--border); border-radius: 0 var(--radius) var(--radius) var(--radius); padding: 28px; }
+  .panel.active { display: block; }
+
+  /* ── Grid ── */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 20px; }
+
+  /* ── Card ── */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .card h3 { font-size: 14px; font-weight: 700; margin-bottom: 14px; color: var(--accent); letter-spacing: .5px; text-transform: uppercase; }
+
+  /* ── Form ── */
+  label { display: block; font-size: 12px; color: var(--mute); margin-bottom: 4px; margin-top: 10px; }
+  label:first-of-type { margin-top: 0; }
+  input, select, textarea {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 8px 12px; font-size: 13px; outline: none; transition: border .2s;
+    font-family: inherit;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 60px; }
+  select option { background: var(--card); }
+
+  /* ── Buttons ── */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s; margin-top: 14px; width: 100%; justify-content: center; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #3d6ae0; }
+  .btn-danger { background: #7f1d1d; color: #fca5a5; border: 1px solid var(--red); }
+  .btn-danger:hover { background: #991b1b; }
+  .btn-success { background: #14532d; color: #86efac; border: 1px solid var(--green); }
+  .btn-success:hover { background: #166534; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ── Result box ── */
+  .result { margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 12px; font-family: monospace; line-height: 1.6; word-break: break-all; display: none; }
+  .result.ok  { background: #0d2b1a; border: 1px solid #1a4731; color: #4ade80; display: block; }
+  .result.err { background: #2b0d0d; border: 1px solid #4b1414; color: #f87171; display: block; }
+  .result.info{ background: #0d1a2b; border: 1px solid #1a3147; color: #60a5fa; display: block; }
+
+  /* ── Status badge ── */
+  .status-badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .s0 { background:#1e3a1e; color:var(--green); }   /* MANUFACTURED */
+  .s1 { background:#1a2b3a; color:#60a5fa; }         /* IN_TRANSIT */
+  .s2 { background:#2a1a3a; color:#c084fc; }         /* AT_PHARMACY */
+  .s3 { background:#3a2a0d; color:var(--amber); }    /* DISPENSED */
+  .s4 { background:#3a0d0d; color:var(--red); }      /* RECALLED */
+
+  /* ── Section heading ── */
+  .section-heading { font-size: 11px; font-weight: 700; color: var(--mute); letter-spacing: 1.5px; text-transform: uppercase; margin: 28px 0 14px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .section-heading:first-child { margin-top: 0; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  th { color: var(--mute); font-weight: 600; text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  td { padding: 7px 10px; border-bottom: 1px solid #1e2235; word-break: break-all; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ── Spinner ── */
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Note ── */
+  .note { font-size: 12px; color: var(--mute); margin-top: 8px; line-height: 1.5; }
+  .note b { color: var(--amber); }
+
+  /* ── Account Switch Banner ── */
+  .switch-banner { display:none; align-items:center; gap:10px; background:#1a1200; border:1px solid #92400e; border-radius:8px; padding:10px 16px; margin-top:10px; font-size:12px; color:#fde68a; }
+  .switch-banner.show { display:flex; }
+  .switch-banner code { background:#2a1800; padding:2px 8px; border-radius:4px; font-family:monospace; color:#fcd34d; cursor:pointer; border:1px solid #78350f; }
+  .switch-banner .sw-ok { background:var(--green); color:#000; border:none; border-radius:5px; padding:4px 12px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; }
+  #drug-role-current { font-size:11px; color:var(--mute); margin-left:8px; font-family:monospace; }
+
+
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⛓ 區塊鏈<span>醫療健康</span>管理系統 <span style="font-size:12px;color:var(--mute);font-weight:400;">PoC Demo</span></h1>
+  <div style="display:flex;align-items:center;">
+    <span id="networkTag" style="display:none;">Sepolia</span>
+    <span id="walletAddr"></span>
+    <button id="walletBtn" onclick="connectWallet()">連接 MetaMask</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('drug')"><span class="tab-icon">💊</span>藥品供應鏈溯源</div>
+  <div class="tab" onclick="switchTab('medical')"><span class="tab-icon">🏥</span>電子病歷存取</div>
+</div>
+
+<main>
+
+<!-- ══════════════════════════════════════════════
+     TAB 1 — DrugTraceability
+══════════════════════════════════════════════ -->
+<div id="panel-drug" class="panel active">
+
+  <div class="panel-role-bar">
+    <label>當前身份：</label>
+    <select id="drug-role-select" onchange="applyDrugRoleFilter()">
+      <option value="0">— 請選擇身份 —</option>
+      <option value="1">👑 ADMIN（管理員）</option>
+      <option value="2">🏭 MANUFACTURER（製造商）</option>
+      <option value="3">🚚 DISTRIBUTOR（配送商）</option>
+      <option value="4">💊 PHARMACY（藥局）</option>
+      <option value="5">🏛 REGULATOR（監管機關）</option>
+    </select>
+    <span id="drug-role-hint" class="role-hint">選擇身份後，僅顯示該角色可用的功能</span>
+    <span id="drug-role-current"></span>
+  </div>
+  <div id="drug-switch-banner" class="switch-banner">
+    ⚠️ 請在 MetaMask 切換到此帳號：
+    <code id="drug-switch-addr" onclick="copyAddr(this)"></code>
+    <span style="font-size:11px;color:var(--mute)">（點擊複製）</span>
+    <button class="sw-ok" onclick="triggerMetaMaskSwitch()">開啟 MetaMask ↗</button>
+  </div>
+
+  <div class="section-heading">角色管理</div>
+  <div class="grid">
+    <div class="card" data-roles="1">
+      <h3>指派角色</h3>
+      <label>錢包地址</label>
+      <input id="d-role-addr" placeholder="0x...">
+      <label>角色</label>
+      <select id="d-role-val">
+        <option value="1">ADMIN（管理員）</option>
+        <option value="2">MANUFACTURER（製造商）</option>
+        <option value="3">DISTRIBUTOR（配送商）</option>
+        <option value="4">PHARMACY（藥局）</option>
+        <option value="5">REGULATOR（監管機關）</option>
+      </select>
+      <button class="btn btn-primary" onclick="assignRole()">指派角色</button>
+      <div id="d-role-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles="1 2 3 4 5">
+      <h3>查詢角色</h3>
+      <label>錢包地址</label>
+      <input id="d-qrole-addr" placeholder="0x...">
+      <button class="btn btn-primary" onclick="queryRole()">查詢</button>
+      <div id="d-qrole-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles="1 2 3 4 5">
+      <h3>角色分配狀態</h3>
+      <table style="margin-top:0;" id="role-table">
+        <tr><th>角色</th><th>已分配地址</th></tr>
+        <tr>
+          <td><span style="color:#c084fc;">ADMIN</span></td>
+          <td id="role-addr-1" style="font-family:monospace;font-size:11px;color:var(--mute);"></td>
+        </tr>
+        <tr>
+          <td><span style="color:var(--green);">MANUFACTURER</span></td>
+          <td id="role-addr-2" style="font-family:monospace;font-size:11px;color:var(--mute);"></td>
+        </tr>
+        <tr>
+          <td><span style="color:#60a5fa;">DISTRIBUTOR</span></td>
+          <td id="role-addr-3" style="font-family:monospace;font-size:11px;color:var(--mute);"></td>
+        </tr>
+        <tr>
+          <td><span style="color:#a78bfa;">PHARMACY</span></td>
+          <td id="role-addr-4" style="font-family:monospace;font-size:11px;color:var(--mute);"></td>
+        </tr>
+        <tr>
+          <td><span style="color:var(--red);">REGULATOR</span></td>
+          <td id="role-addr-5" style="font-family:monospace;font-size:11px;color:var(--mute);"></td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-heading">批次操作</div>
+  <div class="grid">
+
+    <div class="card" data-roles="2">
+      <h3>鑄造藥品批次</h3>
+      <label>藥品名稱</label>
+      <input id="d-mint-name" placeholder="例：Aspirin 100mg">
+      <label>批次代碼</label>
+      <input id="d-mint-code" placeholder="例：BATCH-001">
+      <label>到期日</label>
+      <input id="d-mint-expiry" type="date">
+      <button class="btn btn-success" onclick="mintDrug()">鑄造批次</button>
+      <div id="d-mint-res" class="result"></div>
+      <p class="note"><b>！</b> 需要 MANUFACTURER 角色</p>
+    </div>
+
+    <div class="card" data-roles="2 3">
+      <h3>轉移批次</h3>
+      <label>Batch ID（bytes32）</label>
+      <input id="d-tx-id" placeholder="0x...">
+      <label>接收方地址</label>
+      <input id="d-tx-to" placeholder="0x...">
+      <label>地點</label>
+      <input id="d-tx-loc" placeholder="例：台北倉庫">
+      <button class="btn btn-primary" onclick="transferDrug()">轉移</button>
+      <div id="d-tx-res" class="result"></div>
+      <p class="note"><b>！</b> 需要 MANUFACTURER 或 DISTRIBUTOR 角色</p>
+    </div>
+
+    <div class="card" data-roles="1 2 3 4 5">
+      <h3>驗證藥品真偽</h3>
+      <label>Batch ID（bytes32）</label>
+      <input id="d-verify-id" placeholder="0x...">
+      <button class="btn btn-primary" onclick="verifyDrug()">驗證</button>
+      <div id="d-verify-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles="4">
+      <h3>發藥（藥局）</h3>
+      <label>Batch ID（bytes32）</label>
+      <input id="d-disp-id" placeholder="0x...">
+      <button class="btn btn-success" onclick="dispenseDrug()">確認發藥</button>
+      <div id="d-disp-res" class="result"></div>
+      <p class="note"><b>！</b> 需要 PHARMACY 角色，且批次必須 AT_PHARMACY</p>
+    </div>
+
+    <div class="card" data-roles="5">
+      <h3>召回批次（監管機關）</h3>
+      <label>Batch ID（bytes32）</label>
+      <input id="d-recall-id" placeholder="0x...">
+      <label>召回原因</label>
+      <input id="d-recall-reason" placeholder="例：污染、劑量錯誤">
+      <button class="btn btn-danger" onclick="recallDrug()">發布召回</button>
+      <div id="d-recall-res" class="result"></div>
+      <p class="note"><b>！</b> 需要 REGULATOR 角色</p>
+    </div>
+
+    <div class="card" data-roles="2 3">
+      <h3>記錄冷鏈溫度</h3>
+      <label>Batch ID（bytes32）</label>
+      <input id="d-temp-id" placeholder="0x...">
+      <label>溫度（°C × 100，例如 235 = 2.35°C）</label>
+      <input id="d-temp-val" type="number" placeholder="235">
+      <button class="btn btn-primary" onclick="updateTemp()">記錄溫度</button>
+      <div id="d-temp-res" class="result"></div>
+    </div>
+
+  </div>
+
+  <div class="section-heading">查詢</div>
+  <div class="grid">
+
+    <div class="card" data-roles="1 2 3 4 5">
+      <h3>查詢批次資料</h3>
+      <label>Batch ID（bytes32）</label>
+      <input id="d-get-id" placeholder="0x...">
+      <button class="btn btn-primary" onclick="getBatch()">查詢</button>
+      <div id="d-get-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles="1 2 3 4 5">
+      <h3>查詢轉移歷程</h3>
+      <label>Batch ID（bytes32）</label>
+      <input id="d-hist-id" placeholder="0x...">
+      <button class="btn btn-primary" onclick="getHistory()">查詢</button>
+      <div id="d-hist-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles="1 2 3 4 5">
+      <h3>查詢溫度日誌</h3>
+      <label>Batch ID（bytes32）</label>
+      <input id="d-tlog-id" placeholder="0x...">
+      <button class="btn btn-primary" onclick="getTempLogs()">查詢</button>
+      <div id="d-tlog-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles="1 2 3 4 5">
+      <h3>批次總數</h3>
+      <button class="btn btn-primary" onclick="totalBatches()">查詢總數</button>
+      <div id="d-total-res" class="result"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     TAB 2 — MedicalRecordAccess
+══════════════════════════════════════════════ -->
+<div id="panel-medical" class="panel">
+
+  <div class="panel-role-bar">
+    <label>當前身份：</label>
+    <select id="medi-role-select" onchange="applyMedicalRoleFilter()">
+      <option value="0">— 請選擇身份 —</option>
+      <option value="p">🧑‍⚕️ PATIENT（患者）</option>
+      <option value="d">👨‍⚕️ DOCTOR（醫師）</option>
+    </select>
+    <span id="medi-role-hint" class="role-hint">選擇身份後，僅顯示該角色可用的功能</span>
+    <span id="medi-role-current"></span>
+  </div>
+  <div id="medi-switch-banner" class="switch-banner">
+    ⚠️ 請在 MetaMask 切換到對應帳號，目前連接：
+    <code id="medi-current-addr" onclick="copyAddr(this)"></code>
+    <button class="sw-ok" onclick="triggerMetaMaskSwitch()">開啟 MetaMask ↗</button>
+  </div>
+
+  <div class="section-heading">角色說明</div>
+  <div class="grid" style="margin-bottom:0;">
+    <div class="card">
+      <h3>醫療角色</h3>
+      <table style="margin-top:0;">
+        <tr><th>角色</th><th>判斷方式</th><th>可執行操作</th></tr>
+        <tr>
+          <td><span style="color:#22c55e;font-weight:700;">🧑‍⚕️ PATIENT</span></td>
+          <td style="color:var(--mute);font-size:11px;">地址已登記病歷</td>
+          <td style="color:var(--mute);font-size:11px;">登記 / 更新病歷、授權 / 撤銷存取、查詢稽核日誌</td>
+        </tr>
+        <tr>
+          <td><span style="color:#60a5fa;font-weight:700;">👨‍⚕️ DOCTOR</span></td>
+          <td style="color:var(--mute);font-size:11px;">地址尚無病歷</td>
+          <td style="color:var(--mute);font-size:11px;">申請存取、讀取病歷 CID</td>
+        </tr>
+      </table>
+      <p class="note" style="margin-top:8px;"><b>！</b> 切換 MetaMask 帳號後，頁面自動偵測角色（有病歷 → PATIENT，無 → DOCTOR）</p>
+    </div>
+  </div>
+
+  <div class="section-heading">病歷管理</div>
+  <div class="grid">
+
+    <div class="card" data-roles-medi="p">
+      <h3>登記病歷</h3>
+      <label>患者 ID（bytes32，可用任意 hex）</label>
+      <input id="m-reg-pid" placeholder="0x0000...0001">
+      <label>IPFS CID（加密病歷地址）</label>
+      <input id="m-reg-cid" placeholder="QmXyz...">
+      <button class="btn btn-success" onclick="registerRecord()">登記</button>
+      <div id="m-reg-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles-medi="p">
+      <h3>更新病歷 CID</h3>
+      <label>患者 ID（bytes32）</label>
+      <input id="m-upd-pid" placeholder="0x0000...0001">
+      <label>新 IPFS CID</label>
+      <input id="m-upd-cid" placeholder="QmNew...">
+      <button class="btn btn-primary" onclick="updateRecord()">更新</button>
+      <div id="m-upd-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles-medi="p d">
+      <h3>查詢病歷元資料</h3>
+      <label>患者 ID（bytes32）</label>
+      <input id="m-meta-pid" placeholder="0x0000...0001">
+      <button class="btn btn-primary" onclick="getRecordMeta()">查詢</button>
+      <div id="m-meta-res" class="result"></div>
+    </div>
+
+  </div>
+
+  <div class="section-heading">存取控制</div>
+  <div class="grid">
+
+    <div class="card" data-roles-medi="d">
+      <h3>申請存取（醫師）</h3>
+      <label>患者 ID（bytes32）</label>
+      <input id="m-req-pid" placeholder="0x0000...0001">
+      <button class="btn btn-primary" onclick="requestAccess()">申請</button>
+      <div id="m-req-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles-medi="p">
+      <h3>授權存取（患者）</h3>
+      <label>患者 ID（bytes32）</label>
+      <input id="m-grant-pid" placeholder="0x0000...0001">
+      <label>醫師地址</label>
+      <input id="m-grant-doc" placeholder="0x...">
+      <label>授權時長（秒，0 = 永久）</label>
+      <input id="m-grant-dur" type="number" placeholder="3600">
+      <button class="btn btn-success" onclick="grantAccess()">授權</button>
+      <div id="m-grant-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles-medi="p">
+      <h3>撤銷存取（患者）</h3>
+      <label>患者 ID（bytes32）</label>
+      <input id="m-rev-pid" placeholder="0x0000...0001">
+      <label>醫師地址</label>
+      <input id="m-rev-doc" placeholder="0x...">
+      <button class="btn btn-danger" onclick="revokeAccess()">撤銷</button>
+      <div id="m-rev-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles-medi="d">
+      <h3>讀取病歷 CID（授權方）</h3>
+      <label>患者 ID（bytes32）</label>
+      <input id="m-get-pid" placeholder="0x0000...0001">
+      <button class="btn btn-primary" onclick="getRecord()">讀取</button>
+      <div id="m-get-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles-medi="p d">
+      <h3>確認存取權限</h3>
+      <label>患者 ID（bytes32）</label>
+      <input id="m-has-pid" placeholder="0x0000...0001">
+      <label>查詢地址</label>
+      <input id="m-has-acc" placeholder="0x...">
+      <button class="btn btn-primary" onclick="hasAccess()">確認</button>
+      <div id="m-has-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles-medi="p">
+      <h3>查詢稽核日誌（患者）</h3>
+      <label>患者 ID（bytes32）</label>
+      <input id="m-log-pid" placeholder="0x0000...0001">
+      <button class="btn btn-primary" onclick="getAccessLog()">查詢</button>
+      <div id="m-log-res" class="result"></div>
+    </div>
+
+  </div>
+</div>
+
+</main>
+
+<script>
+// ── 合約設定 ────────────────────────────────────────────────
+const DRUG_ADDR  = "0x4c0A7Cf2a5ed432674b8fcd992E4041A221FADd0";
+const MEDI_ADDR  = "0xBC9ed947DFe416C03a4d01cd3197cEe49ae11ef0";
+
+const DRUG_ABI = [
+  "function assignRole(address account, uint8 role) external",
+  "function roles(address) view returns (uint8)",
+  "function mintDrug(string drugName, string batchCode, uint256 expiryDate) external returns (bytes32)",
+  "function transferDrug(bytes32 batchId, address to, string location) external",
+  "function updateTemperature(bytes32 batchId, int256 celsius) external",
+  "function verifyDrug(bytes32 batchId) external returns (bool)",
+  "function dispenseDrug(bytes32 batchId) external",
+  "function recallDrug(bytes32 batchId, string reason) external",
+  "function getBatch(bytes32 batchId) view returns (string drugName, string manufacturer, uint256 manufactureDate, uint256 expiryDate, uint8 status, address currentHolder, bool recalled)",
+  "function getTransferHistory(bytes32 batchId) view returns (tuple(address from, address to, uint256 timestamp, string location)[])",
+  "function getTemperatureLogs(bytes32 batchId) view returns (tuple(int256 celsius, uint256 timestamp, address reporter)[])",
+  "function totalBatches() view returns (uint256)",
+  "event BatchMinted(bytes32 indexed batchId, string drugName, address manufacturer, uint256 timestamp)",
+];
+
+const MEDI_ABI = [
+  "function registerRecord(bytes32 patientId, string ipfsCID) external",
+  "function updateRecord(bytes32 patientId, string newCID) external",
+  "function requestAccess(bytes32 patientId) external",
+  "function grantAccess(bytes32 patientId, address doctor, uint256 duration) external",
+  "function revokeAccess(bytes32 patientId, address doctor) external",
+  "function getRecord(bytes32 patientId) external returns (string)",
+  "function hasAccess(bytes32 patientId, address accessor) view returns (bool)",
+  "function getRecordMeta(bytes32 patientId) view returns (address owner, uint256 registeredAt)",
+  "function getAccessLog(bytes32 patientId) view returns (tuple(address accessor, uint256 timestamp, string action)[])",
+  "event RecordRegistered(bytes32 indexed patientId, address indexed owner, string ipfsCID, uint256 timestamp)",
+];
+
+const ROLE_NAMES = ["NONE","ADMIN","MANUFACTURER（製造商）","DISTRIBUTOR（配送商）","PHARMACY（藥局）","REGULATOR（監管機關）"];
+const STATUS_NAMES = ["MANUFACTURED（已製造）","IN_TRANSIT（運送中）","AT_PHARMACY（藥局）","DISPENSED（已發藥）","RECALLED（已召回）"];
+
+let provider, signer, drugContract, mediContract;
+
+// ── 連接錢包 ────────────────────────────────────────────────
+async function connectWallet() {
+  if (!window.ethereum) { alert("請安裝 MetaMask！"); return; }
+  try {
+    await window.ethereum.request({ method: "eth_requestAccounts" });
+    await refreshSigner();
+
+    // 監聽 MetaMask 帳號切換 → 自動重新綁定 signer
+    window.ethereum.removeAllListeners("accountsChanged");
+    window.ethereum.on("accountsChanged", async (accounts) => {
+      if (accounts.length === 0) {
+        signer = null; drugContract = null; mediContract = null;
+        document.getElementById("walletAddr").textContent = "";
+        document.getElementById("walletBtn").textContent  = "連接 MetaMask";
+        document.getElementById("walletBtn").style.background = "";
+        document.getElementById("networkTag").style.display = "none";
+      } else {
+        await refreshSigner();
+      }
+    });
+  } catch(e) { alert("連接失敗：" + e.message); }
+}
+
+async function refreshSigner() {
+  provider = new ethers.providers.Web3Provider(window.ethereum);
+  signer   = provider.getSigner();
+  const addr    = await signer.getAddress();
+  const network = await provider.getNetwork();
+
+  drugContract = new ethers.Contract(DRUG_ADDR, DRUG_ABI, signer);
+  mediContract = new ethers.Contract(MEDI_ADDR, MEDI_ABI, signer);
+
+  document.getElementById("walletAddr").textContent = addr.slice(0,6)+"..."+addr.slice(-4);
+  document.getElementById("walletBtn").textContent  = "已連接 ✓";
+  document.getElementById("walletBtn").style.background = "#166534";
+  document.getElementById("networkTag").style.display = "inline-block";
+  document.getElementById("networkTag").textContent  = network.name === "sepolia" ? "✓ Sepolia" : network.name;
+
+  // 重新載入角色分配狀態，載入後自動偵測目前帳號的角色
+  loadRoleAssignments().then(() => autoDetectRole(addr));
+}
+
+async function autoDetectRole(addr) {
+  // Drug：從鏈上 roles mapping 自動選角色
+  if (drugContract) {
+    try {
+      const role = Number(await drugContract.roles(addr));
+      const select = document.getElementById("drug-role-select");
+      select.value = (role >= 1 && role <= 5) ? role : 0;
+      applyDrugRoleFilter();
+    } catch(e) {}
+  }
+  // Medical：嘗試偵測是否有病歷記錄
+  autoDetectMedicalRole(addr);
+}
+
+// 從鏈上 RoleAssigned 事件讀取最新分配地址
+async function loadRoleAssignments() {
+  if (!drugContract) return;
+  try {
+    const filter = drugContract.filters.RoleAssigned();
+    const events = await drugContract.queryFilter(filter);
+    // 每個 role 取最新一筆（events 由舊到新）
+    const latest = {};
+    events.forEach(e => {
+      const role = Number(e.args.role);
+      if (role >= 1 && role <= 5) {
+        latest[role] = e.args.account;
+      }
+    });
+    updateRoleTable(latest);
+  } catch(e) { console.error("loadRoleAssignments:", e.message); }
+}
+
+let roleAddressMap = {}; // role number → full address
+
+function updateRoleTable(latest) {
+  roleAddressMap = {};
+  for (let i = 1; i <= 5; i++) {
+    const el = document.getElementById("role-addr-" + i);
+    if (!el) continue;
+    if (latest[i]) {
+      el.textContent = latest[i].slice(0,8) + "..." + latest[i].slice(-6);
+      el.title = latest[i];
+      el.style.color = "var(--text)";
+      roleAddressMap[i] = latest[i];
+    } else {
+      el.textContent = "";
+    }
+  }
+}
+
+// ── 角色篩選 ─────────────────────────────────────────────────
+const ROLE_COLORS = { 1:"#c084fc", 2:"#22c55e", 3:"#60a5fa", 4:"#a78bfa", 5:"#ef4444" };
+const ROLE_LABELS = { 1:"ADMIN", 2:"MANUFACTURER", 3:"DISTRIBUTOR", 4:"PHARMACY", 5:"REGULATOR" };
+const MEDI_ROLE_COLORS = { p:"#22c55e", d:"#60a5fa" };
+const MEDI_ROLE_LABELS = { p:"PATIENT（患者）", d:"DOCTOR（醫師）" };
+
+function applyDrugRoleFilter() {
+  const role = parseInt(document.getElementById("drug-role-select").value);
+  const hint = document.getElementById("drug-role-hint");
+
+  if (role === 0) {
+    hint.innerHTML = "選擇身份後，僅顯示該角色可用的功能";
+    hint.style.color = "var(--mute)";
+    hideSwitchBanner();
+  } else {
+    hint.innerHTML = `目前身份：<span style="color:${ROLE_COLORS[role]};font-weight:700;">${ROLE_LABELS[role]}</span>`;
+    hint.style.color = "";
+    checkAccountMatch(role);
+  }
+
+  document.querySelectorAll("#panel-drug .card[data-roles]").forEach(card => {
+    const allowed = card.dataset.roles.split(" ").map(Number);
+    if (role === 0) {
+      card.classList.toggle("locked", !allowed.includes(1) || allowed.length > 1);
+      return;
+    }
+    card.classList.toggle("locked", !allowed.includes(role));
+  });
+}
+
+async function checkAccountMatch(role) {
+  if (!signer) return;
+  const currentAddr = await signer.getAddress();
+  const expectedAddr = roleAddressMap[role];
+
+  // 更新顯示目前連接地址
+  const curEl = document.getElementById("drug-role-current");
+  if (curEl) curEl.textContent = currentAddr.slice(0,6)+"..."+currentAddr.slice(-4);
+
+  if (!expectedAddr) {
+    // 此角色尚未指派任何地址，不顯示提示
+    hideSwitchBanner();
+    return;
+  }
+
+  if (currentAddr.toLowerCase() !== expectedAddr.toLowerCase()) {
+    // 目前帳號不是此角色的帳號，顯示切換提示
+    showSwitchBanner(expectedAddr);
+  } else {
+    hideSwitchBanner();
+  }
+}
+
+function showSwitchBanner(addr) {
+  const banner = document.getElementById("drug-switch-banner");
+  const addrEl = document.getElementById("drug-switch-addr");
+  addrEl.textContent = addr;
+  banner.classList.add("show");
+}
+
+function hideSwitchBanner() {
+  document.getElementById("drug-switch-banner").classList.remove("show");
+}
+
+function copyAddr(el) {
+  navigator.clipboard.writeText(el.textContent).then(() => {
+    const orig = el.textContent;
+    el.textContent = "✓ 已複製";
+    setTimeout(() => el.textContent = orig, 1500);
+  });
+}
+
+function triggerMetaMaskSwitch() {
+  // 觸發 MetaMask 帳號選擇器
+  window.ethereum.request({
+    method: "wallet_requestPermissions",
+    params: [{ eth_accounts: {} }]
+  }).catch(() => {});
+}
+
+function applyMedicalRoleFilter() {
+  const role = document.getElementById("medi-role-select").value;
+  const hint = document.getElementById("medi-role-hint");
+
+  if (role === "0") {
+    hint.innerHTML = "選擇身份後，僅顯示該角色可用的功能";
+    hint.style.color = "var(--mute)";
+    hideMediSwitchBanner();
+  } else {
+    hint.innerHTML = `目前身份：<span style="color:${MEDI_ROLE_COLORS[role]};font-weight:700;">${MEDI_ROLE_LABELS[role]}</span>`;
+    hint.style.color = "";
+    showMediCurrentAddr();
+  }
+
+  document.querySelectorAll("#panel-medical .card[data-roles-medi]").forEach(card => {
+    const allowed = card.dataset.rolesMedi.split(" ");
+    if (role === "0") {
+      // 未選擇角色：全部鎖定
+      card.classList.add("locked");
+      return;
+    }
+    card.classList.toggle("locked", !allowed.includes(role));
+  });
+}
+
+async function showMediCurrentAddr() {
+  if (!signer) return;
+  const addr = await signer.getAddress();
+  const curEl = document.getElementById("medi-role-current");
+  if (curEl) curEl.textContent = addr.slice(0,6)+"..."+addr.slice(-4);
+
+  // 顯示橫幅提示目前使用帳號
+  const addrEl = document.getElementById("medi-current-addr");
+  if (addrEl) addrEl.textContent = addr;
+  document.getElementById("medi-switch-banner").classList.add("show");
+}
+
+function hideMediSwitchBanner() {
+  const el = document.getElementById("medi-switch-banner");
+  if (el) el.classList.remove("show");
+  const curEl = document.getElementById("medi-role-current");
+  if (curEl) curEl.textContent = "";
+}
+
+async function autoDetectMedicalRole(addr) {
+  if (!mediContract) return;
+  try {
+    // 查詢此地址是否曾登記病歷（以 RecordRegistered 事件的 owner 欄位過濾）
+    const filter = mediContract.filters.RecordRegistered(null, addr);
+    const events  = await mediContract.queryFilter(filter);
+    const select  = document.getElementById("medi-role-select");
+    select.value  = events.length > 0 ? "p" : "d";
+    applyMedicalRoleFilter();
+  } catch(e) {
+    // 查詢失敗就不自動選，保持原狀
+  }
+}
+
+
+// ── Tab 切換 ────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  const tabs = document.querySelectorAll('.tab');
+  if (name === 'drug') tabs[0].classList.add('active');
+  else tabs[1].classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+// ── 共用輔助 ─────────────────────────────────────────────────
+function r(id, ok, msg) {
+  const el = document.getElementById(id);
+  el.className = 'result ' + (ok ? 'ok' : 'err');
+  el.textContent = (ok ? '✓ ' : '✗ ') + msg;
+}
+
+function toBytes32(str) {
+  str = str.trim();
+  if (/^0x[0-9a-fA-F]{64}$/.test(str)) return str;  // already valid bytes32 hex
+  if (str.length <= 31) return ethers.utils.formatBytes32String(str);  // short string
+  return ethers.utils.keccak256(ethers.utils.toUtf8Bytes(str));  // hash longer strings
+}
+
+function fmtTime(ts) {
+  return new Date(Number(ts) * 1000).toLocaleString('zh-TW');
+}
+
+// ══════════════════════════════════════════
+//  DRUG 功能函式
+// ══════════════════════════════════════════
+
+async function assignRole() {
+  if (!drugContract) { r('d-role-res', false, '請先連接 MetaMask'); return; }
+  const addr = document.getElementById('d-role-addr').value.trim();
+  const role = parseInt(document.getElementById('d-role-val').value);
+  try {
+    const tx = await drugContract.assignRole(addr, role);
+    r('d-role-res', true, '交易發送中... ' + tx.hash);
+    await tx.wait();
+    r('d-role-res', true, '角色指派成功 ✓  tx: ' + tx.hash);
+    loadRoleAssignments();
+  } catch(e) { r('d-role-res', false, e.reason || e.message); }
+}
+
+async function queryRole() {
+  if (!drugContract) { r('d-qrole-res', false, '請先連接 MetaMask'); return; }
+  const addr = document.getElementById('d-qrole-addr').value.trim();
+  const NAMES = ['NONE','ADMIN','MANUFACTURER','DISTRIBUTOR','PHARMACY','REGULATOR'];
+  try {
+    const role = Number(await drugContract.roles(addr));
+    r('d-qrole-res', true, `${addr.slice(0,8)}... → ${NAMES[role] || role} (${role})`);
+  } catch(e) { r('d-qrole-res', false, e.reason || e.message); }
+}
+
+async function mintDrug() {
+  if (!drugContract) { r('d-mint-res', false, '請先連接 MetaMask'); return; }
+  const drugName  = document.getElementById('d-mint-name').value.trim();
+  const batchCode = document.getElementById('d-mint-code').value.trim();
+  const expiryTs  = Math.floor(new Date(document.getElementById('d-mint-expiry').value).getTime() / 1000);
+  try {
+    const tx = await drugContract.mintDrug(drugName, batchCode, expiryTs);
+    r('d-mint-res', true, '交易發送中... ' + tx.hash);
+    const receipt = await tx.wait();
+    // parse BatchMinted event for batchId
+    const event = receipt.events?.find(e => e.event === 'BatchMinted');
+    const batchId = event ? event.args.batchId : '(查看 tx)';
+    r('d-mint-res', true, `鑄造成功！batchId: ${batchId}`);
+  } catch(e) { r('d-mint-res', false, e.reason || e.message); }
+}
+
+async function transferDrug() {
+  if (!drugContract) { r('d-tx-res', false, '請先連接 MetaMask'); return; }
+  const batchId  = document.getElementById('d-tx-id').value.trim();
+  const to       = document.getElementById('d-tx-to').value.trim();
+  const location = document.getElementById('d-tx-loc').value.trim();
+  try {
+    const tx = await drugContract.transferDrug(batchId, to, location);
+    r('d-tx-res', true, '交易發送中... ' + tx.hash);
+    await tx.wait();
+    r('d-tx-res', true, '轉移成功 ✓  tx: ' + tx.hash);
+  } catch(e) { r('d-tx-res', false, e.reason || e.message); }
+}
+
+async function verifyDrug() {
+  if (!drugContract) { r('d-verify-res', false, '請先連接 MetaMask'); return; }
+  const batchId = document.getElementById('d-verify-id').value.trim();
+  try {
+    const tx = await drugContract.verifyDrug(batchId);
+    const receipt = await tx.wait();
+    const event = receipt.events?.find(e => e.event === 'BatchVerified');
+    const authentic = event ? event.args.authentic : null;
+    r('d-verify-res', authentic !== false, authentic ? '✓ 真品 — 批次有效、未召回、未過期' : '✗ 驗證失敗 — 批次不存在、已召回或已過期');
+  } catch(e) { r('d-verify-res', false, e.reason || e.message); }
+}
+
+async function dispenseDrug() {
+  if (!drugContract) { r('d-disp-res', false, '請先連接 MetaMask'); return; }
+  const batchId = document.getElementById('d-disp-id').value.trim();
+  try {
+    const tx = await drugContract.dispenseDrug(batchId);
+    r('d-disp-res', true, '交易發送中... ' + tx.hash);
+    await tx.wait();
+    r('d-disp-res', true, '發藥成功 ✓  tx: ' + tx.hash);
+  } catch(e) { r('d-disp-res', false, e.reason || e.message); }
+}
+
+async function recallDrug() {
+  if (!drugContract) { r('d-recall-res', false, '請先連接 MetaMask'); return; }
+  const batchId = document.getElementById('d-recall-id').value.trim();
+  const reason  = document.getElementById('d-recall-reason').value.trim();
+  try {
+    const tx = await drugContract.recallDrug(batchId, reason);
+    r('d-recall-res', true, '交易發送中... ' + tx.hash);
+    await tx.wait();
+    r('d-recall-res', true, '召回成功廣播 ✓  tx: ' + tx.hash);
+  } catch(e) { r('d-recall-res', false, e.reason || e.message); }
+}
+
+async function updateTemp() {
+  if (!drugContract) { r('d-temp-res', false, '請先連接 MetaMask'); return; }
+  const batchId = document.getElementById('d-temp-id').value.trim();
+  const celsius = Math.round(parseFloat(document.getElementById('d-temp-val').value) * 100);
+  try {
+    const tx = await drugContract.updateTemperature(batchId, celsius);
+    r('d-temp-res', true, '交易發送中... ' + tx.hash);
+    await tx.wait();
+    r('d-temp-res', true, `溫度記錄成功 ${celsius/100}°C ✓`);
+  } catch(e) { r('d-temp-res', false, e.reason || e.message); }
+}
+
+async function getBatch() {
+  if (!drugContract) { r('d-get-res', false, '請先連接 MetaMask'); return; }
+  const batchId = document.getElementById('d-get-id').value.trim();
+  const STATUS  = ['MANUFACTURED','IN_TRANSIT','AT_PHARMACY','DISPENSED','RECALLED'];
+  try {
+    const b = await drugContract.getBatch(batchId);
+    r('d-get-res', true,
+      `藥名：${b.drugName}\n製造商：${b.manufacturer}\n` +
+      `製造日：${fmtTime(b.manufactureDate)}\n到期日：${fmtTime(b.expiryDate)}\n` +
+      `狀態：${STATUS[b.status]}\n持有人：${b.currentHolder}\n` +
+      `召回：${b.recalled ? '是 ⚠' : '否'}`);
+  } catch(e) { r('d-get-res', false, e.reason || e.message); }
+}
+
+async function getHistory() {
+  if (!drugContract) { r('d-hist-res', false, '請先連接 MetaMask'); return; }
+  const batchId = document.getElementById('d-hist-id').value.trim();
+  try {
+    const records = await drugContract.getTransferHistory(batchId);
+    const lines = records.map((rec, i) =>
+      `[${i}] ${fmtTime(rec.timestamp)} | ${rec.from.slice(0,8)}→${rec.to.slice(0,8)} | ${rec.location}`
+    );
+    r('d-hist-res', true, lines.join('\n') || '（無記錄）');
+  } catch(e) { r('d-hist-res', false, e.reason || e.message); }
+}
+
+async function getTempLogs() {
+  if (!drugContract) { r('d-tlog-res', false, '請先連接 MetaMask'); return; }
+  const batchId = document.getElementById('d-tlog-id').value.trim();
+  try {
+    const logs = await drugContract.getTemperatureLogs(batchId);
+    const lines = logs.map((l, i) =>
+      `[${i}] ${fmtTime(l.timestamp)} | ${(Number(l.celsius)/100).toFixed(2)}°C | ${l.reporter.slice(0,8)}...`
+    );
+    r('d-tlog-res', true, lines.join('\n') || '（無記錄）');
+  } catch(e) { r('d-tlog-res', false, e.reason || e.message); }
+}
+
+async function totalBatches() {
+  if (!drugContract) { r('d-total-res', false, '請先連接 MetaMask'); return; }
+  try {
+    const n = await drugContract.totalBatches();
+    r('d-total-res', true, `鏈上共 ${n} 筆批次`);
+  } catch(e) { r('d-total-res', false, e.reason || e.message); }
+}
+
+// ══════════════════════════════════════════
+//  MEDICAL 功能函式
+// ══════════════════════════════════════════
+
+async function registerRecord() {
+  if (!mediContract) { r('m-reg-res', false, '請先連接 MetaMask'); return; }
+  const pid = document.getElementById('m-reg-pid').value.trim();
+  const cid = document.getElementById('m-reg-cid').value.trim();
+  if (!pid || !cid) { r('m-reg-res', false, '請填寫患者 ID 與 IPFS CID'); return; }
+  try {
+    const bytes32pid = toBytes32(pid);
+    const tx = await mediContract.registerRecord(bytes32pid, cid);
+    r('m-reg-res', true, '交易發送中... ' + tx.hash);
+    await tx.wait();
+    r('m-reg-res', true, `登記成功 ✓\npatientId (bytes32): ${bytes32pid}\nCID: ${cid}`);
+  } catch(e) { r('m-reg-res', false, e.reason || e.message); }
+}
+
+async function updateRecord() {
+  if (!mediContract) { r('m-upd-res', false, '請先連接 MetaMask'); return; }
+  const pid = document.getElementById('m-upd-pid').value.trim();
+  const cid = document.getElementById('m-upd-cid').value.trim();
+  try {
+    const tx = await mediContract.updateRecord(toBytes32(pid), cid);
+    r('m-upd-res', true, '交易發送中... ' + tx.hash);
+    await tx.wait();
+    r('m-upd-res', true, '更新成功 ✓  新 CID: ' + cid);
+  } catch(e) { r('m-upd-res', false, e.reason || e.message); }
+}
+
+async function getRecordMeta() {
+  if (!mediContract) { r('m-meta-res', false, '請先連接 MetaMask'); return; }
+  const pid = document.getElementById('m-meta-pid').value.trim();
+  try {
+    const [owner, registeredAt] = await mediContract.getRecordMeta(toBytes32(pid));
+    r('m-meta-res', true, `擁有者：${owner}\n登記時間：${fmtTime(registeredAt)}`);
+  } catch(e) { r('m-meta-res', false, e.reason || e.message); }
+}
+
+async function requestAccess() {
+  if (!mediContract) { r('m-req-res', false, '請先連接 MetaMask'); return; }
+  const pid = document.getElementById('m-req-pid').value.trim();
+  try {
+    const tx = await mediContract.requestAccess(toBytes32(pid));
+    r('m-req-res', true, '交易發送中... ' + tx.hash);
+    await tx.wait();
+    r('m-req-res', true, '申請已發送，等待患者授權 ✓');
+  } catch(e) { r('m-req-res', false, e.reason || e.message); }
+}
+
+async function grantAccess() {
+  if (!mediContract) { r('m-grant-res', false, '請先連接 MetaMask'); return; }
+  const pid      = document.getElementById('m-grant-pid').value.trim();
+  const doctor   = document.getElementById('m-grant-doc').value.trim();
+  const duration = parseInt(document.getElementById('m-grant-dur').value) || 0;
+  try {
+    const tx = await mediContract.grantAccess(toBytes32(pid), doctor, duration);
+    r('m-grant-res', true, '交易發送中... ' + tx.hash);
+    await tx.wait();
+    const expMsg = duration === 0 ? '永久授權' : `授權 ${duration} 秒`;
+    r('m-grant-res', true, `授權成功 ✓  ${expMsg}  醫師：${doctor.slice(0,10)}...`);
+  } catch(e) { r('m-grant-res', false, e.reason || e.message); }
+}
+
+async function revokeAccess() {
+  if (!mediContract) { r('m-rev-res', false, '請先連接 MetaMask'); return; }
+  const pid    = document.getElementById('m-rev-pid').value.trim();
+  const doctor = document.getElementById('m-rev-doc').value.trim();
+  try {
+    const tx = await mediContract.revokeAccess(toBytes32(pid), doctor);
+    r('m-rev-res', true, '交易發送中... ' + tx.hash);
+    await tx.wait();
+    r('m-rev-res', true, '授權已撤銷 ✓');
+  } catch(e) { r('m-rev-res', false, e.reason || e.message); }
+}
+
+async function getRecord() {
+  if (!mediContract) { r('m-get-res', false, '請先連接 MetaMask'); return; }
+  const pid = document.getElementById('m-get-pid').value.trim();
+  try {
+    const tx = await mediContract.getRecord(toBytes32(pid));
+    const receipt = await tx.wait();
+    const event = receipt.events?.find(e => e.event === 'RecordAccessed');
+    // getRecord is a state-changing tx; CID is in the return value but ethers v5
+    // can't decode tx return values — use callStatic for preview first
+    const cid = await mediContract.callStatic.getRecord(toBytes32(pid));
+    r('m-get-res', true, `病歷 CID：${cid}\n存取已記錄於鏈上 ✓`);
+  } catch(e) { r('m-get-res', false, e.reason || e.message); }
+}
+
+async function hasAccess() {
+  if (!mediContract) { r('m-has-res', false, '請先連接 MetaMask'); return; }
+  const pid      = document.getElementById('m-has-pid').value.trim();
+  const accessor = document.getElementById('m-has-acc').value.trim();
+  try {
+    const result = await mediContract.hasAccess(toBytes32(pid), accessor);
+    r('m-has-res', result, result ? '✓ 持有有效存取授權' : '✗ 無授權或已過期');
+  } catch(e) { r('m-has-res', false, e.reason || e.message); }
+}
+
+async function getAccessLog() {
+  if (!mediContract) { r('m-log-res', false, '請先連接 MetaMask'); return; }
+  const pid = document.getElementById('m-log-pid').value.trim();
+  try {
+    const logs = await mediContract.getAccessLog(toBytes32(pid));
+    const lines = logs.map((l, i) =>
+      `[${i}] ${fmtTime(l.timestamp)} | ${l.action} | ${l.accessor.slice(0,10)}...`
+    );
+    r('m-log-res', true, lines.join('\n') || '（無稽核記錄）');
+  } catch(e) { r('m-log-res', false, e.reason || e.message); }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  applyDrugRoleFilter();
+  applyMedicalRoleFilter();
+});
+</script>
+</body>
+</html>
