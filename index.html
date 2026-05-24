@@ -23,6 +23,10 @@
   #walletBtn:hover { opacity: .85; }
   #walletAddr { font-size: 13px; color: var(--mute); margin-left: 12px; font-family: monospace; }
   #networkTag { font-size: 12px; padding: 3px 10px; border-radius: 20px; margin-left: 10px; background: #1e3a1e; color: var(--green); border: 1px solid #2d5a2d; }
+  #networkTag.wrong { background: #3b1a1a; color: #f87171; border-color: #7f1d1d; }
+  #net-warn { display:none; background:#3b1a1a; border:1px solid #7f1d1d; color:#fca5a5; border-radius:8px; padding:10px 18px; margin:10px 0 0 0; font-size:13px; text-align:center; }
+  #net-warn.show { display:flex; align-items:center; gap:12px; justify-content:center; }
+  #net-warn button { background:#dc2626; color:#fff; border:none; border-radius:6px; padding:5px 14px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
 
   /* ── Panel Role Bar ── */
   .panel-role-bar { background: #12152099; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 18px; display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
@@ -127,6 +131,10 @@
     <button id="walletBtn" onclick="connectWallet()">連接 MetaMask</button>
   </div>
 </header>
+<div id="net-warn">
+  ⚠️ 目前連接的不是 Sepolia 測試網路，交易將消耗真實 ETH！
+  <button onclick="switchToSepolia()">切換到 Sepolia ↗</button>
+</div>
 
 <div class="tabs">
   <div class="tab active" onclick="switchTab('drug')"><span class="tab-icon">💊</span>藥品供應鏈溯源</div>
@@ -446,6 +454,14 @@
     </div>
 
     <div class="card" data-roles-medi="p">
+      <h3>查詢存取申請清單（患者）</h3>
+      <label>患者 ID（bytes32）</label>
+      <input id="m-req-list-pid" placeholder="0x0000...0001">
+      <button class="btn btn-primary" onclick="listAccessRequests()">查詢申請醫師</button>
+      <div id="m-req-list-res" class="result"></div>
+    </div>
+
+    <div class="card" data-roles-medi="p">
       <h3>查詢稽核日誌（患者）</h3>
       <label>患者 ID（bytes32）</label>
       <input id="m-log-pid" placeholder="0x0000...0001">
@@ -490,6 +506,9 @@ const MEDI_ABI = [
   "function getRecordMeta(bytes32 patientId) view returns (address owner, uint256 registeredAt)",
   "function getAccessLog(bytes32 patientId) view returns (tuple(address accessor, uint256 timestamp, string action)[])",
   "event RecordRegistered(bytes32 indexed patientId, address indexed owner, string ipfsCID, uint256 timestamp)",
+  "event AccessRequested(bytes32 indexed patientId, address indexed doctor, uint256 timestamp)",
+  "event AccessGranted(bytes32 indexed patientId, address indexed doctor, uint256 expiry, uint256 timestamp)",
+  "event AccessRevoked(bytes32 indexed patientId, address indexed doctor, uint256 timestamp)",
 ];
 
 const ROLE_NAMES = ["NONE","ADMIN","MANUFACTURER（製造商）","DISTRIBUTOR（配送商）","PHARMACY（藥局）","REGULATOR（監管機關）"];
@@ -506,6 +525,8 @@ async function connectWallet() {
 
     // 監聽 MetaMask 帳號切換 → 自動重新綁定 signer
     window.ethereum.removeAllListeners("accountsChanged");
+    window.ethereum.removeAllListeners("chainChanged");
+    window.ethereum.on("chainChanged", () => window.location.reload());
     window.ethereum.on("accountsChanged", async (accounts) => {
       if (accounts.length === 0) {
         signer = null; drugContract = null; mediContract = null;
@@ -532,8 +553,7 @@ async function refreshSigner() {
   document.getElementById("walletAddr").textContent = addr.slice(0,6)+"..."+addr.slice(-4);
   document.getElementById("walletBtn").textContent  = "已連接 ✓";
   document.getElementById("walletBtn").style.background = "#166534";
-  document.getElementById("networkTag").style.display = "inline-block";
-  document.getElementById("networkTag").textContent  = network.name === "sepolia" ? "✓ Sepolia" : network.name;
+  checkNetwork(network.chainId);
 
   // 重新載入角色分配狀態，載入後自動偵測目前帳號的角色
   loadRoleAssignments().then(() => autoDetectRole(addr));
@@ -727,6 +747,50 @@ async function autoDetectMedicalRole(addr) {
   }
 }
 
+
+// ── 網路切換（強制 Sepolia）───────────────────────────────────
+const SEPOLIA_CHAIN_ID = '0xaa36a7';
+
+async function switchToSepolia() {
+  try {
+    await window.ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: SEPOLIA_CHAIN_ID }],
+    });
+  } catch (switchErr) {
+    if (switchErr.code === 4902) {
+      // Sepolia not added yet → add it
+      try {
+        await window.ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId: SEPOLIA_CHAIN_ID,
+            chainName: 'Sepolia Testnet',
+            nativeCurrency: { name: 'SepoliaETH', symbol: 'ETH', decimals: 18 },
+            rpcUrls: ['https://rpc.sepolia.org'],
+            blockExplorerUrls: ['https://sepolia.etherscan.io'],
+          }],
+        });
+      } catch(e) { alert('新增 Sepolia 失敗：' + e.message); }
+    }
+  }
+}
+
+function checkNetwork(chainId) {
+  const isSepolia = chainId === 11155111 || chainId === '0xaa36a7';
+  const tag = document.getElementById('networkTag');
+  const warn = document.getElementById('net-warn');
+  if (isSepolia) {
+    tag.textContent = '✓ Sepolia';
+    tag.className = '';
+    warn.classList.remove('show');
+  } else {
+    tag.textContent = '⚠ 非 Sepolia';
+    tag.className = 'wrong';
+    warn.classList.add('show');
+  }
+  tag.style.display = 'inline-block';
+}
 
 // ── Tab 切換 ────────────────────────────────────────────────
 function switchTab(name) {
@@ -1003,6 +1067,39 @@ async function hasAccess() {
     const result = await mediContract.hasAccess(toBytes32(pid), accessor);
     r('m-has-res', result, result ? '✓ 持有有效存取授權' : '✗ 無授權或已過期');
   } catch(e) { r('m-has-res', false, e.reason || e.message); }
+}
+
+async function listAccessRequests() {
+  if (!mediContract) { r('m-req-list-res', false, '請先連接 MetaMask'); return; }
+  const pid = document.getElementById('m-req-list-pid').value.trim();
+  try {
+    const bytes32pid = toBytes32(pid);
+
+    // Query AccessRequested events for this patientId
+    const reqFilter = mediContract.filters.AccessRequested(bytes32pid);
+    const reqEvents = await mediContract.queryFilter(reqFilter);
+
+    if (reqEvents.length === 0) {
+      r('m-req-list-res', true, '（尚無醫師申請存取此病歷）');
+      return;
+    }
+
+    // For each requesting doctor, check current access status
+    const lines = await Promise.all(reqEvents.map(async (e) => {
+      const doctor = e.args.doctor;
+      const reqTime = fmtTime(e.args.timestamp);
+      let status = '';
+      try {
+        const hasAcc = await mediContract.hasAccess(bytes32pid, doctor);
+        status = hasAcc ? '✓ 目前已授權' : '✗ 未授權 / 已過期';
+      } catch { status = '（無法確認）'; }
+      return `${doctor.slice(0,10)}...${doctor.slice(-6)}
+  申請時間：${reqTime}
+  狀態：${status}`;
+    }));
+
+    r('m-req-list-res', true, `共 ${lines.length} 筆申請：\n\n` + lines.join('\n\n'));
+  } catch(e) { r('m-req-list-res', false, e.reason || e.message); }
 }
 
 async function getAccessLog() {

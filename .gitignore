@@ -20,3 +20,5 @@ typechain-types/
 # Temporary files
 *.log
 .env
+*.tmp
+.~lock.*
