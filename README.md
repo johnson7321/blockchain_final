@@ -73,10 +73,38 @@ blockchain_final/
 4. 部署至 `Remix VM`（本機測試）或 MetaMask 連接的測試網
 5. 複製合約地址，填入 `index.html` 中對應的欄位
 
+### 合約地址替換（自行部署時必做）
+
+`index.html` 第 479–480 行寫死了作者部署在 Sepolia 測試網的合約地址：
+
+```js
+const DRUG_ADDR  = "0x4c0A7Cf2a5ed432674b8fcd992E4041A221FADd0";
+const MEDI_ADDR  = "0xBC9ed947DFe416C03a4d01cd3197cEe49ae11ef0";
+```
+
+若要使用自己部署的合約，請將上方兩個地址替換為 Remix IDE 部署後顯示的合約地址，並確認 MetaMask 已切換至對應網路（預設為 **Sepolia**）。
+
+### 啟動前端伺服器
+
+直接雙擊開啟 `index.html` 可能因瀏覽器安全限制導致 MetaMask 無法注入，建議以本地伺服器方式啟動：
+
+```bash
+# 方法一：Python（通常已內建）
+python -m http.server 8080
+# 接著開啟 http://localhost:8080
+
+# 方法二：Node.js npx（需安裝 Node.js）
+npx serve .
+# 接著開啟終端機顯示的網址
+
+# 方法三：VS Code Live Server 擴充功能
+# 在 index.html 上按右鍵 → Open with Live Server
+```
+
 ### 使用前端介面
 
-1. 以瀏覽器直接開啟 `index.html`
-2. 連接 MetaMask 錢包（需切換至正確網路）
+1. 啟動本地伺服器後以瀏覽器開啟對應網址
+2. 連接 MetaMask 錢包（需切換至 Sepolia 或自行部署的網路）
 3. 透過角色選擇器切換身份，操作對應功能面板
 
 ---
